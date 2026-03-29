@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e . pytest
+
+      - name: Run tests
+        run: python -m pytest -q
+
+  fastapi-matrix:
+    name: FastAPI Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.versions.outputs.versions }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install bootstrap dependencies
+        run: python -m pip install --upgrade pip
+
+      - id: versions
+        name: Resolve recent stable FastAPI releases
+        run: |
+          versions="$(python scripts/latest_fastapi_versions.py --count 25)"
+          echo "Selected FastAPI versions: ${versions}"
+          echo "versions=${versions}" >> "${GITHUB_OUTPUT}"
+
+  fastapi-compat:
+    name: FastAPI Compat (${{ matrix.fastapi-version }})
+    needs:
+      - tests
+      - fastapi-matrix
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        fastapi-version: ${{ fromJson(needs.fastapi-matrix.outputs.versions) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest "fastapi==${{ matrix.fastapi-version }}"
+
+      - name: Run tests
+        run: python -m pytest -q
