@@ -81,12 +81,12 @@ name = "mountaineer-di"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "fastapi" },
     { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "fastapi" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -94,13 +94,11 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.100,<1.0" },
-    { name = "pydantic", specifier = ">=2.0,<3.0" },
-]
+requires-dist = [{ name = "pydantic", specifier = ">=2.0,<3.0" }]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "fastapi", specifier = ">=0.100,<1.0" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.5" },
     { name = "ruff", specifier = ">=0.3.0" },

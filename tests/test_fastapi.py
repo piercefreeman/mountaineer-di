@@ -1,12 +1,11 @@
 from inspect import signature
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from fastapi import Depends as FastAPIDepends, Request
 from starlette.datastructures import Headers
 
 from mountaineer_di import (
-    DependenciesBase,
     Depends,
     get_function_dependencies,
     isolate_dependency_only_function,
@@ -19,48 +18,24 @@ class Service:
         self.value = "service"
 
 
-@pytest.mark.asyncio
-async def test_recursive_dependencies_resolve() -> None:
-    async def dep_1() -> int:
-        return 1
-
-    async def dep_2(dep_1: int = Depends(dep_1)) -> int:
-        return dep_1 + 2
-
-    def dep_3(dep_2: int = Depends(dep_2)) -> int:
-        return dep_2 + 3
-
-    with pytest.warns(DeprecationWarning):
-
-        class ExampleDependencies(DependenciesBase):
-            dep_1: Callable[..., Any]
-            dep_2: Callable[..., Any]
-            dep_3: Callable[..., Any]
-
-    ExampleDependencies.dep_1 = dep_1
-    ExampleDependencies.dep_2 = dep_2
-    ExampleDependencies.dep_3 = dep_3
-
-    async with get_function_dependencies(callable=ExampleDependencies.dep_3) as values:
-        assert ExampleDependencies.dep_3(**values) == 6
-
-
-@pytest.mark.asyncio
-async def test_dependency_overrides_apply() -> None:
-    def dep_1() -> str:
-        return "original"
-
-    def dep_2(dep_1: str = Depends(dep_1)) -> str:
-        return f"value:{dep_1}"
-
-    def mocked_dep_1() -> str:
-        return "mocked"
-
-    async with get_function_dependencies(
-        callable=dep_2,
-        dependency_overrides={dep_1: mocked_dep_1},
-    ) as values:
-        assert dep_2(**values) == "value:mocked"
+def _build_request(
+    *,
+    path: str = "/test/5/",
+    query_string: bytes = b"url_query_param=test-query-value",
+    cookie_header: str = "test-cookie=cookie-value",
+) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "path": path,
+            "query_string": query_string,
+            "headers": Headers({"cookie": cookie_header}).raw,
+            "method": "GET",
+            "scheme": "http",
+            "client": ("testclient", 50000),
+            "server": ("testserver", 80),
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -79,23 +54,10 @@ async def test_request_path_query_and_dependency_resolution() -> None:
             "cookie_value": cookie_value,
         }
 
-    request = Request(
-        {
-            "type": "http",
-            "path": "/test/5/",
-            "query_string": b"url_query_param=test-query-value",
-            "headers": Headers({"cookie": "test-cookie=cookie-value"}).raw,
-            "method": "GET",
-            "scheme": "http",
-            "client": ("testclient", 50000),
-            "server": ("testserver", 80),
-        }
-    )
-
     async with get_function_dependencies(
         callable=render,
         url="/test/{path_param}/",
-        request=request,
+        request=_build_request(),
     ) as values:
         assert values == {
             "path_param": 5,
@@ -123,6 +85,26 @@ async def test_parameterless_fastapi_depends_uses_annotation_callable() -> None:
 
     async with get_function_dependencies(callable=target) as values:
         assert await target(**values) == "service"
+
+
+@pytest.mark.asyncio
+async def test_native_depends_can_wrap_fastapi_injected_dependency() -> None:
+    def cookie_dependency(request: Request) -> str | None:
+        return request.cookies.get("test-cookie")
+
+    def native_dependency(
+        cookie_value: str | None = FastAPIDepends(cookie_dependency),
+    ) -> str:
+        return cookie_value or "missing"
+
+    async def target(value: str = Depends(native_dependency)) -> str:
+        return value
+
+    async with get_function_dependencies(
+        callable=target,
+        request=_build_request(cookie_header="test-cookie=interop-cookie"),
+    ) as values:
+        assert await target(**values) == "interop-cookie"
 
 
 @pytest.mark.asyncio
@@ -168,12 +150,3 @@ def test_isolate_dependency_only_function_and_strip_depends() -> None:
 
     stripped = strip_depends_from_signature(test_complex_function)
     assert set(stripped.parameters) == {"payload", "request"}
-
-
-def test_incorrect_static_method() -> None:
-    with pytest.warns(DeprecationWarning), pytest.raises(TypeError):
-
-        class ExampleIncorrectDependency(DependenciesBase):
-            @staticmethod
-            async def dep_1() -> int:
-                return 1
