@@ -1,46 +1,50 @@
-name: CI
+name: test
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  tests:
-    name: Tests
+  lint:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
+      - run: make ci-lint
 
-      - name: Install uv
-        run: python -m pip install --upgrade pip uv
-
-      - name: Install dependencies
-        run: uv sync --group dev
-
-      - name: Run tests
-        run: uv run pytest -q
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: make test
 
   fastapi-matrix:
-    name: FastAPI Matrix
+    needs: [lint, test]
     runs-on: ubuntu-latest
     outputs:
       versions: ${{ steps.versions.outputs.versions }}
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
-
-      - name: Install uv
-        run: python -m pip install --upgrade pip uv
-
+          python-version: "3.13"
       - id: versions
         name: Resolve recent stable FastAPI releases
         run: |
@@ -49,32 +53,59 @@ jobs:
           echo "versions=${versions}" >> "${GITHUB_OUTPUT}"
 
   fastapi-compat:
-    name: FastAPI Compat (${{ matrix.fastapi-version }})
-    needs:
-      - tests
-      - fastapi-matrix
+    needs: [lint, test, fastapi-matrix]
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       max-parallel: 5
       matrix:
         fastapi-version: ${{ fromJson(needs.fastapi-matrix.outputs.versions) }}
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
-
-      - name: Install uv
-        run: python -m pip install --upgrade pip uv
-
+          python-version: "3.13"
       - name: Install dependencies
         run: |
           uv sync --group dev
           uv pip install "fastapi==${{ matrix.fastapi-version }}"
+      - run: make test
 
-      - name: Run tests
-        run: uv run pytest -q
+  full-build:
+    needs: [lint, test, fastapi-compat]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'pull_request' &&
+      contains(toJson(github.event.pull_request.labels), 'full-build'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Update version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: uv run .github/scripts/update_version.py ${{ github.ref_name }}
+      - name: Build sdist and wheel
+        run: uv build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    needs: [full-build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
