@@ -3,7 +3,7 @@ name = "mountaineer-di"
 version = "0.1.0"
 description = "Common dependency injection utilities for mountaineer & friends"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "pydantic>=2.0,<3.0",
 ]
