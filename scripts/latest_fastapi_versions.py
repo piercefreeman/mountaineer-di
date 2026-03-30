@@ -16,14 +16,23 @@ def main() -> None:
         description="Fetch the most recent stable FastAPI releases from PyPI."
     )
     parser.add_argument(
-        "--count",
+        "--patch-count",
         type=int,
-        default=25,
-        help="Number of stable releases to return.",
+        default=10,
+        help="Number of recent stable patch releases to return.",
+    )
+    parser.add_argument(
+        "--minor-count",
+        type=int,
+        default=50,
+        help="Number of recent minor lines to include at their latest stable release.",
     )
     args = parser.parse_args()
 
-    versions = fetch_recent_stable_fastapi_versions(limit=args.count)
+    versions = fetch_recent_stable_fastapi_versions(
+        patch_limit=args.patch_count,
+        minor_limit=args.minor_count,
+    )
     print(json.dumps(versions))
 
 

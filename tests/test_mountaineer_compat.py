@@ -1,11 +1,8 @@
-from contextlib import asynccontextmanager
 from inspect import signature
-from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pytest
-from fastapi import Depends as FastAPIDepends
-from fastapi import Request
+from fastapi import Depends as FastAPIDepends, Request
 from starlette.datastructures import Headers
 
 from mountaineer_di import (
@@ -36,7 +33,9 @@ async def test_recursive_dependencies_resolve() -> None:
     with pytest.warns(DeprecationWarning):
 
         class ExampleDependencies(DependenciesBase):
-            pass
+            dep_1: Callable[..., Any]
+            dep_2: Callable[..., Any]
+            dep_3: Callable[..., Any]
 
     ExampleDependencies.dep_1 = dep_1
     ExampleDependencies.dep_2 = dep_2
@@ -139,7 +138,9 @@ async def test_dependency_context_lifetime_covers_streaming_case() -> None:
             resource["alive"] = False
             cleanup_called = True
 
-    async def stream(resource: dict[str, Any] = Depends(get_managed_resource)) -> list[int]:
+    async def stream(
+        resource: dict[str, Any] = Depends(get_managed_resource),
+    ) -> list[int]:
         return list(resource["values"])
 
     async with get_function_dependencies(callable=stream) as values:

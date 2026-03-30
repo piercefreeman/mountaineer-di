@@ -127,7 +127,9 @@ def test_provide_dependencies_handles_returned_async_context_manager() -> None:
     def dependency_returning_async_cm() -> Any:
         return create_async_resource()
 
-    async def target(resource: Annotated[str, Depend(dependency_returning_async_cm)]) -> str:
+    async def target(
+        resource: Annotated[str, Depend(dependency_returning_async_cm)],
+    ) -> str:
         return resource
 
     async def run() -> str:
@@ -152,7 +154,9 @@ def test_provide_dependencies_handles_returned_sync_context_manager() -> None:
     def dependency_returning_sync_cm() -> Any:
         return create_sync_resource()
 
-    async def target(resource: Annotated[str, Depend(dependency_returning_sync_cm)]) -> str:
+    async def target(
+        resource: Annotated[str, Depend(dependency_returning_sync_cm)],
+    ) -> str:
         return resource
 
     async def run() -> str:
@@ -193,10 +197,18 @@ def test_circular_dependency_detection() -> None:
     async def dep_two(value: Annotated[str, Depend(dep_one)]) -> str:
         return value
 
-    dep_one.__signature__ = signature(dep_one).replace(  # type: ignore[attr-defined]
-        parameters=[
-            signature(dep_one).parameters["value"].replace(default=Depend(dep_two))
-        ]
+    setattr(
+        dep_one,
+        "__signature__",
+        signature(dep_one).replace(
+            parameters=[
+                signature(dep_one)
+                .parameters["value"]
+                .replace(
+                    default=Depend(dep_two),
+                )
+            ]
+        ),
     )
 
     async def target(value: Annotated[str, Depend(dep_one)]) -> str:
