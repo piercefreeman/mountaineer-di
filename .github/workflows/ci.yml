@@ -44,7 +44,7 @@ jobs:
       - id: versions
         name: Resolve recent stable FastAPI releases
         run: |
-          versions="$(uv run python scripts/latest_fastapi_versions.py --count 25)"
+          versions="$(uv run python scripts/latest_fastapi_versions.py --patch-count 10 --minor-count 50)"
           echo "Selected FastAPI versions: ${versions}"
           echo "versions=${versions}" >> "${GITHUB_OUTPUT}"
 
