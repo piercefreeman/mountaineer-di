@@ -16,18 +16,6 @@ Install the package with `uv`:
 uv add mountaineer-di
 ```
 
-If you want FastAPI interop as well:
-
-```bash
-uv add fastapi
-```
-
-If you are developing this repository directly:
-
-```bash
-uv sync --group dev
-```
-
 ## Native Usage
 
 Use `Depends(...)` to declare dependencies, then resolve a callable with
@@ -51,10 +39,9 @@ async def handler(message: Annotated[str, Depends(get_message)]) -> str:
     return message
 
 
-async def main() -> None:
-    async with provide_dependencies(handler) as kwargs:
-        result = await handler(**kwargs)
-    print(result)  # hello world
+async with provide_dependencies(handler) as kwargs:
+    result = await handler(**kwargs)
+print(result)  # hello world
 ```
 
 `provide_dependencies(...)` keeps generator and context-manager dependencies
@@ -62,7 +49,7 @@ alive for the duration of the async context.
 
 ## FastAPI Interop
 
-FastAPI is optional. If it is installed, native dependencies can call into
+If you're already using FastAPI elsewhere in your code, you can also use `mountaineer-di` to call into
 dependencies that use `fastapi.Depends(...)`:
 
 ```python
@@ -87,19 +74,6 @@ async def task(context: str = Depends(get_context)) -> str:
 
 For request-bound resolution, pass the request object and route template into
 `get_function_dependencies(...)` or `provide_dependencies(...)`.
-
-## Public API
-
-- `Depends`: create a dependency marker.
-- `provide_dependencies`: resolve a callable inside an async context.
-- `get_function_dependencies`: same resolution flow, using `url=` for route templates.
-- `DependencyResolver`: lower-level resolver class.
-- `isolate_dependency_only_function`: expose only dependency parameters in a signature.
-- `strip_depends_from_signature`: remove dependency parameters from a signature.
-
-CI includes a FastAPI compatibility stage that queries PyPI at runtime and runs
-the test suite against the 10 most recent stable FastAPI releases plus the
-latest stable release from each of the 50 most recent FastAPI minor lines.
 
 ## Development
 
