@@ -1,39 +1,44 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "click>=8.1,<9",
+# ]
+# ///
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
 
+import click
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mountaineer_di.fastapi_compat import fetch_recent_stable_fastapi_versions
+from scripts.fastapi_release_helper import fetch_recent_stable_fastapi_versions
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Fetch the most recent stable FastAPI releases from PyPI."
-    )
-    parser.add_argument(
-        "--patch-count",
-        type=int,
-        default=10,
-        help="Number of recent stable patch releases to return.",
-    )
-    parser.add_argument(
-        "--minor-count",
-        type=int,
-        default=50,
-        help="Number of recent minor lines to include at their latest stable release.",
-    )
-    args = parser.parse_args()
-
+@click.command()
+@click.option(
+    "--patch-count",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="Number of recent stable patch releases to return.",
+)
+@click.option(
+    "--minor-count",
+    type=click.IntRange(min=1),
+    default=50,
+    show_default=True,
+    help="Number of recent minor lines to include at their latest stable release.",
+)
+def main(patch_count: int, minor_count: int) -> None:
     versions = fetch_recent_stable_fastapi_versions(
-        patch_limit=args.patch_count,
-        minor_limit=args.minor_count,
+        patch_limit=patch_count,
+        minor_limit=minor_count,
     )
-    print(json.dumps(versions))
+    click.echo(json.dumps(versions))
 
 
 if __name__ == "__main__":

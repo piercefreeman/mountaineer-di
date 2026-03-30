@@ -1,4 +1,4 @@
-from mountaineer_di.fastapi_compat import (
+from scripts.fastapi_release_helper import (
     is_stable_release,
     minor_line,
     select_recent_stable_versions,
