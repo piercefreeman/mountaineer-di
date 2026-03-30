@@ -28,11 +28,7 @@ def select_recent_stable_versions(
             continue
 
         latest_upload = max(
-            (
-                file.get("upload_time_iso_8601")
-                or file.get("upload-time")
-                or ""
-            )
+            (file.get("upload_time_iso_8601") or file.get("upload-time") or "")
             for file in non_yanked_files
         )
         if not latest_upload:

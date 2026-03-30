@@ -6,10 +6,18 @@ import warnings
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from inspect import Parameter, Signature, signature
-from typing import Annotated, Any, AsyncIterator, Callable, Optional, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Any,
+    AsyncIterator,
+    Callable,
+    Optional,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
-from fastapi import Depends as Depends
-from fastapi import Request, params as fastapi_params
+from fastapi import Depends as Depends, Request, params as fastapi_params
 from pydantic import TypeAdapter
 from pydantic_core import PydanticUndefined
 
@@ -119,7 +127,8 @@ class DependencyResolver:
         *,
         request: Request | None = None,
         path: str | None = None,
-        dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
+        dependency_overrides: dict[Callable[..., Any], Callable[..., Any]]
+        | None = None,
     ) -> None:
         self._context: dict[str, Any] = dict(initial_kwargs or {})
         self._cache: dict[Callable[..., Any], Any] = {}
@@ -256,7 +265,9 @@ class DependencyResolver:
 
         field_info = _field_info(parameter, annotation)
         if field_info is not None:
-            resolved = await self._resolve_from_field_info(parameter, annotation, field_info)
+            resolved = await self._resolve_from_field_info(
+                parameter, annotation, field_info
+            )
             if resolved.found:
                 return resolved
             default = _field_default(field_info)
@@ -282,11 +293,15 @@ class DependencyResolver:
             raw_value = self._request_resolver.path_params().get(alias)
             return self._coerce_optional(annotation, raw_value)
         if isinstance(field_info, fastapi_params.Query):
-            raw_value = _pick_query_value(self._request_resolver.query_values(alias), annotation)
+            raw_value = _pick_query_value(
+                self._request_resolver.query_values(alias), annotation
+            )
             return self._coerce_optional(annotation, raw_value)
         if isinstance(field_info, fastapi_params.Header):
             header_name = alias
-            if header_name == parameter.name and getattr(field_info, "convert_underscores", True):
+            if header_name == parameter.name and getattr(
+                field_info, "convert_underscores", True
+            ):
                 header_name = header_name.replace("_", "-")
             raw_value = self._request_resolver.header_value(header_name)
             return self._coerce_optional(annotation, raw_value)
@@ -324,7 +339,9 @@ class DependencyResolver:
     def _coerce_optional(self, annotation: Any, raw_value: Any) -> _ResolvedParameter:
         if raw_value is None:
             return _ResolvedParameter(found=False)
-        return _ResolvedParameter(found=True, value=_coerce_value(annotation, raw_value))
+        return _ResolvedParameter(
+            found=True, value=_coerce_value(annotation, raw_value)
+        )
 
 
 _MISSING = object()
@@ -345,7 +362,9 @@ def _get_parameter_hints(func: Callable[..., Any]) -> dict[str, Any]:
         localns.update(closure_vars.nonlocals)
 
     try:
-        return get_type_hints(target, globalns=globalns, localns=localns, include_extras=True)
+        return get_type_hints(
+            target, globalns=globalns, localns=localns, include_extras=True
+        )
     except Exception:
         return {}
 
@@ -436,7 +455,9 @@ def _match_path(path_template: str, request_path: str) -> dict[str, str]:
     for match in re.finditer(r"{([^}:]+)(?::[^}]+)?}", path_template):
         pattern_parts.append(re.escape(path_template[cursor : match.start()]))
         converter_name = match.group(1)
-        converter_type = match.group(0).split(":", 1)[1][:-1] if ":" in match.group(0) else ""
+        converter_type = (
+            match.group(0).split(":", 1)[1][:-1] if ":" in match.group(0) else ""
+        )
         if converter_type == "path":
             pattern_parts.append(f"(?P<{converter_name}>.+)")
         else:
@@ -491,20 +512,24 @@ async def get_function_dependencies(
         yield values
 
 
-def isolate_dependency_only_function(original_fn: Callable[..., Any]) -> Callable[..., Any]:
+def isolate_dependency_only_function(
+    original_fn: Callable[..., Any],
+) -> Callable[..., Any]:
     sig = signature(original_fn)
     hints = _get_parameter_hints(original_fn)
     dependency_params = [
         parameter
         for parameter in sig.parameters.values()
-        if _dependency_marker(parameter, hints.get(parameter.name, parameter.annotation))
+        if _dependency_marker(
+            parameter, hints.get(parameter.name, parameter.annotation)
+        )
         is not None
     ]
 
     async def mock_fn(**deps: Any) -> Any:
         return None
 
-    mock_fn.__signature__ = sig.replace(parameters=dependency_params)  # type: ignore[attr-defined]
+    setattr(mock_fn, "__signature__", sig.replace(parameters=dependency_params))
     return mock_fn
 
 
@@ -514,7 +539,9 @@ def strip_depends_from_signature(original_fn: Callable[..., Any]) -> Signature:
     non_dependency_params = [
         parameter
         for parameter in sig.parameters.values()
-        if _dependency_marker(parameter, hints.get(parameter.name, parameter.annotation))
+        if _dependency_marker(
+            parameter, hints.get(parameter.name, parameter.annotation)
+        )
         is None
     ]
     return sig.replace(parameters=non_dependency_params)
