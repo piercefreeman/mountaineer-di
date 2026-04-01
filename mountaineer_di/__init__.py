@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .markers import Depends
+from .overrides import dependency_overrides
 from .resolver_core import (
     DependencyResolver,
     get_function_dependencies,
@@ -14,6 +15,7 @@ from .signatures import (
 __all__ = [
     "DependencyResolver",
     "Depends",
+    "dependency_overrides",
     "get_function_dependencies",
     "isolate_dependency_only_function",
     "provide_dependencies",

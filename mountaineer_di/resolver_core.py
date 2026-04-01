@@ -19,6 +19,7 @@ from .annotations import (
     _strip_annotated,
 )
 from .optional_fastapi import _fastapi_field_info_kind
+from .overrides import _callable_dependency_overrides
 from .request_parsing import _RequestResolver, _ResolvedParameter
 
 
@@ -331,7 +332,8 @@ async def provide_dependencies(
         path: Optional route template used when deriving path parameters from
             the request URL.
         dependency_overrides: Optional dependency replacement mapping, commonly
-            used by tests.
+            used by tests. Values passed here override any callable-level
+            overrides attached via ``@dependency_overrides(...)``.
 
     Yields:
         A dictionary of keyword arguments that can be passed directly to
@@ -343,11 +345,15 @@ async def provide_dependencies(
         supported_markers: ``mountaineer_di.Depends`` and ``fastapi.Depends``
     """
 
+    resolved_dependency_overrides = _callable_dependency_overrides(func)
+    if dependency_overrides is not None:
+        resolved_dependency_overrides.update(dependency_overrides)
+
     resolver = DependencyResolver(
         kwargs,
         request=request,
         path=path,
-        dependency_overrides=dependency_overrides,
+        dependency_overrides=resolved_dependency_overrides or None,
     )
     try:
         call_kwargs = await resolver.build_call_kwargs(func)
@@ -384,7 +390,9 @@ async def get_function_dependencies(
             ``path`` for Mountaineer compatibility.
         request: Optional request-like object used for request-aware parameter
             extraction.
-        dependency_overrides: Optional dependency replacement mapping.
+        dependency_overrides: Optional dependency replacement mapping. Values
+            passed here override any callable-level overrides attached via
+            ``@dependency_overrides(...)``.
 
     Yields:
         A dictionary of resolved keyword arguments for ``callable``.

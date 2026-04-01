@@ -12,6 +12,7 @@ belong in ``test_dependency_signatures.py`` instead.
 """
 
 import asyncio
+import functools
 import subprocess
 import sys
 from contextlib import asynccontextmanager, contextmanager
@@ -21,7 +22,12 @@ from typing import Annotated, Any, AsyncIterator, Iterator
 
 import pytest
 
-from mountaineer_di import Depends, get_function_dependencies, provide_dependencies
+from mountaineer_di import (
+    Depends,
+    dependency_overrides,
+    get_function_dependencies,
+    provide_dependencies,
+)
 
 
 def test_depends_is_internal_marker() -> None:
@@ -451,6 +457,86 @@ async def test_dependency_overrides_apply() -> None:
         dependency_overrides={dep_1: mocked_dep_1},
     ) as values:
         assert dep_2(**values) == "value:mocked"
+
+
+@pytest.mark.asyncio
+async def test_callable_dependency_overrides_decorator_applies() -> None:
+    """Verify ``@dependency_overrides(...)`` supplies default overrides for a callable."""
+
+    def dep_1() -> str:
+        return "original"
+
+    def mocked_dep_1() -> str:
+        return "decorated"
+
+    @dependency_overrides({dep_1: mocked_dep_1})
+    async def handler(value: str = Depends(dep_1)) -> str:
+        return value
+
+    async with provide_dependencies(handler) as kwargs:
+        assert await handler(**kwargs) == "decorated"
+
+
+@pytest.mark.asyncio
+async def test_callable_dependency_overrides_follow_wrapped_callables() -> None:
+    """Verify callable-level overrides survive wrapper decorators that preserve ``__wrapped__``."""
+
+    def dep_1() -> str:
+        return "original"
+
+    def mocked_dep_1() -> str:
+        return "wrapped"
+
+    @dependency_overrides({dep_1: mocked_dep_1})
+    async def original(value: str = Depends(dep_1)) -> str:
+        return value
+
+    @functools.wraps(original)
+    async def wrapped(*args: Any, **kwargs: Any) -> str:
+        return await original(*args, **kwargs)
+
+    async with provide_dependencies(wrapped) as values:
+        assert await wrapped(**values) == "wrapped"
+
+
+@pytest.mark.asyncio
+async def test_runtime_dependency_overrides_take_precedence_over_callable_defaults() -> (
+    None
+):
+    """Verify explicit resolver overrides merge with and override callable-level defaults."""
+
+    def dep_1() -> str:
+        return "one"
+
+    def dep_2() -> str:
+        return "two"
+
+    def decorated_dep_1() -> str:
+        return "decorated-one"
+
+    def decorated_dep_2() -> str:
+        return "decorated-two"
+
+    def runtime_dep_2() -> str:
+        return "runtime-two"
+
+    @dependency_overrides(
+        {
+            dep_1: decorated_dep_1,
+            dep_2: decorated_dep_2,
+        }
+    )
+    async def handler(
+        first: str = Depends(dep_1),
+        second: str = Depends(dep_2),
+    ) -> tuple[str, str]:
+        return (first, second)
+
+    async with provide_dependencies(
+        handler,
+        dependency_overrides={dep_2: runtime_dep_2},
+    ) as kwargs:
+        assert await handler(**kwargs) == ("decorated-one", "runtime-two")
 
 
 def test_basic_resolution_does_not_require_fastapi_installed() -> None:
