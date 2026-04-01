@@ -7,15 +7,17 @@ DependencyOverrideMap = dict[Callable[..., Any], Callable[..., Any]]
 _DEPENDENCY_OVERRIDES_ATTR = "__mountaineer_dependency_overrides__"
 
 
-def dependency_overrides(
-    overrides: DependencyOverrideMap,
+def dependency_override(
+    original: Callable[..., Any],
+    replacement: Callable[..., Any],
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
-    Attach default dependency overrides to a callable.
+    Attach a default dependency override to a callable.
 
     Parameters:
-        overrides: Mapping from original dependency callables to replacement
-            callables.
+        original: Dependency callable to replace within the decorated callable's
+            resolved graph.
+        replacement: Callable that should be resolved instead of ``original``.
 
     Metadata:
         runtime_behavior: explicit resolver overrides take precedence
@@ -24,7 +26,7 @@ def dependency_overrides(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         existing = dict(getattr(func, _DEPENDENCY_OVERRIDES_ATTR, {}))
-        setattr(func, _DEPENDENCY_OVERRIDES_ATTR, {**existing, **overrides})
+        setattr(func, _DEPENDENCY_OVERRIDES_ATTR, {**existing, original: replacement})
         return func
 
     return decorator

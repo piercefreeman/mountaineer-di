@@ -333,7 +333,7 @@ async def provide_dependencies(
             the request URL.
         dependency_overrides: Optional dependency replacement mapping, commonly
             used by tests. Values passed here override any callable-level
-            overrides attached via ``@dependency_overrides(...)``.
+            overrides attached via ``@dependency_override(...)``.
 
     Yields:
         A dictionary of keyword arguments that can be passed directly to
@@ -392,7 +392,7 @@ async def get_function_dependencies(
             extraction.
         dependency_overrides: Optional dependency replacement mapping. Values
             passed here override any callable-level overrides attached via
-            ``@dependency_overrides(...)``.
+            ``@dependency_override(...)``.
 
     Yields:
         A dictionary of resolved keyword arguments for ``callable``.

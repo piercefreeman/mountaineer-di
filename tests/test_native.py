@@ -24,7 +24,7 @@ import pytest
 
 from mountaineer_di import (
     Depends,
-    dependency_overrides,
+    dependency_override,
     get_function_dependencies,
     provide_dependencies,
 )
@@ -461,7 +461,7 @@ async def test_dependency_overrides_apply() -> None:
 
 @pytest.mark.asyncio
 async def test_callable_dependency_overrides_decorator_applies() -> None:
-    """Verify ``@dependency_overrides(...)`` supplies default overrides for a callable."""
+    """Verify ``@dependency_override(...)`` supplies a default override for a callable."""
 
     def dep_1() -> str:
         return "original"
@@ -469,7 +469,7 @@ async def test_callable_dependency_overrides_decorator_applies() -> None:
     def mocked_dep_1() -> str:
         return "decorated"
 
-    @dependency_overrides({dep_1: mocked_dep_1})
+    @dependency_override(dep_1, mocked_dep_1)
     async def handler(value: str = Depends(dep_1)) -> str:
         return value
 
@@ -487,7 +487,7 @@ async def test_callable_dependency_overrides_follow_wrapped_callables() -> None:
     def mocked_dep_1() -> str:
         return "wrapped"
 
-    @dependency_overrides({dep_1: mocked_dep_1})
+    @dependency_override(dep_1, mocked_dep_1)
     async def original(value: str = Depends(dep_1)) -> str:
         return value
 
@@ -520,12 +520,8 @@ async def test_runtime_dependency_overrides_take_precedence_over_callable_defaul
     def runtime_dep_2() -> str:
         return "runtime-two"
 
-    @dependency_overrides(
-        {
-            dep_1: decorated_dep_1,
-            dep_2: decorated_dep_2,
-        }
-    )
+    @dependency_override(dep_1, decorated_dep_1)
+    @dependency_override(dep_2, decorated_dep_2)
     async def handler(
         first: str = Depends(dep_1),
         second: str = Depends(dep_2),

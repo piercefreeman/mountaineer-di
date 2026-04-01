@@ -30,7 +30,7 @@ It supports:
 - Generator and context-manager dependency lifecycles
 - FastAPI request/query/path/header/cookie/body extraction when FastAPI is installed
 - Runtime dependency overrides
-- Callable-level dependency overrides via `@dependency_overrides(...)`
+- Callable-level dependency overrides via `@dependency_override(...)`
 
 ## Quick Start
 
@@ -216,11 +216,12 @@ print(result)  # value:mocked
 
 ### Callable-level overrides
 
-Use `@dependency_overrides(...)` when a specific callable should always resolve
-with a local override:
+Use `@dependency_override(...)` when a specific callable should always resolve
+with a local override. Stack multiple decorators to attach multiple local
+overrides:
 
 ```python
-from mountaineer_di import Depends, dependency_overrides, provide_dependencies
+from mountaineer_di import Depends, dependency_override, provide_dependencies
 
 
 def require_valid_user() -> str:
@@ -231,9 +232,7 @@ def get_billing_user_from_request() -> str:
     return "billing-user"
 
 
-@dependency_overrides({
-    require_valid_user: get_billing_user_from_request,
-})
+@dependency_override(require_valid_user, get_billing_user_from_request)
 async def bill_for_metered_type(
     user: str = Depends(require_valid_user),
 ) -> str:
