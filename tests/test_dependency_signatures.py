@@ -1,3 +1,16 @@
+"""Signature coverage for dependency injection.
+
+Keep tests here when the main question is whether the resolver can inject the
+right values into a callable shape or parameter signature. That includes plain
+functions, wrapped callables, partials, callable instances, constructor-based
+dependencies, FastAPI/native marker interop, request-bound parameters, and the
+signature helper utilities.
+
+Do not put lifecycle or teardown behavior here. Tests about context-manager
+entry/exit, generator rollback, suppression, caching, overrides, or circular
+graph behavior belong in the runtime-focused files instead.
+"""
+
 from __future__ import annotations
 
 import functools

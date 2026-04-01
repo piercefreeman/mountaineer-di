@@ -1,3 +1,14 @@
+"""FastAPI-adjacent runtime scenarios that are not just signature coverage.
+
+Keep tests here when the behavior under test depends on request-style or
+framework-style runtime usage patterns, such as keeping dependency-managed
+resources alive across work like streaming.
+
+Do not duplicate generic signature-shape coverage here. FastAPI/native marker
+resolution, request-bound parameter injection, and other callable-signature
+cases belong in ``test_dependency_signatures.py``.
+"""
+
 from typing import Any
 
 import pytest

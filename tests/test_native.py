@@ -1,3 +1,16 @@
+"""Runtime behavior for the native dependency resolver.
+
+Keep tests here when the main question is how the resolver behaves after a
+dependency has been selected: generator and context-manager lifecycle,
+exception propagation during teardown, LIFO unwinding, unmanaged return values,
+cache behavior, circular detection, overrides, and native operation without
+FastAPI installed.
+
+Do not put callable-shape or parameter-signature coverage here. Tests whose
+main purpose is "can this kind of function signature be injected correctly?"
+belong in ``test_dependency_signatures.py`` instead.
+"""
+
 import asyncio
 import subprocess
 import sys

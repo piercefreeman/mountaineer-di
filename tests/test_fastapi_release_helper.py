@@ -1,3 +1,11 @@
+"""Unit tests for the FastAPI release helper script.
+
+Keep tests here when the functionality under test is release-selection logic in
+``scripts.fastapi_release_helper`` rather than dependency injection. These
+tests validate version filtering, minor-line grouping, timestamp ordering, and
+stable-version selection rules.
+"""
+
 from scripts.fastapi_release_helper import (
     is_stable_release,
     minor_line,
