@@ -1,3 +1,16 @@
+"""Runtime behavior for the native dependency resolver.
+
+Keep tests here when the main question is how the resolver behaves after a
+dependency has been selected: generator and context-manager lifecycle,
+exception propagation during teardown, LIFO unwinding, unmanaged return values,
+cache behavior, circular detection, overrides, and native operation without
+FastAPI installed.
+
+Do not put callable-shape or parameter-signature coverage here. Tests whose
+main purpose is "can this kind of function signature be injected correctly?"
+belong in ``test_dependency_signatures.py`` instead.
+"""
+
 import asyncio
 import subprocess
 import sys
@@ -12,44 +25,16 @@ from mountaineer_di import Depends, get_function_dependencies, provide_dependenc
 
 
 def test_depends_is_internal_marker() -> None:
+    """Verify the public marker comes from this package even when FastAPI is installed."""
+
     marker = Depends()
 
     assert type(marker).__module__.startswith("mountaineer_di")
 
 
-def test_provide_dependencies_resolves_regular_values() -> None:
-    def dependency() -> str:
-        return "dependent"
-
-    async def target(value: Annotated[str, Depends(dependency)]) -> str:
-        return value
-
-    async def run() -> str:
-        async with provide_dependencies(target) as kwargs:
-            return await target(**kwargs)
-
-    assert asyncio.run(run()) == "dependent"
-
-
-def test_provide_dependencies_passes_kwargs_to_dependencies() -> None:
-    calls: list[str] = []
-
-    def dependency(prefix: str) -> str:
-        calls.append(prefix)
-        return f"{prefix}-dep"
-
-    async def target(prefix: str, value: Any = Depends(dependency)) -> str:
-        return str(value)
-
-    async def run() -> str:
-        async with provide_dependencies(target, {"prefix": "root"}) as kwargs:
-            return await target(**kwargs)
-
-    assert asyncio.run(run()) == "root-dep"
-    assert calls == ["root"]
-
-
 def test_provide_dependencies_handles_async_generator_dependency() -> None:
+    """Verify async generator dependencies stay open through the handler call and then clean up."""
+
     events: list[str] = []
 
     async def dependency() -> AsyncIterator[str]:
@@ -70,38 +55,9 @@ def test_provide_dependencies_handles_async_generator_dependency() -> None:
     assert events == ["enter", "exit"]
 
 
-def test_provide_dependencies_supports_recursive_dependencies() -> None:
-    def base() -> str:
-        return "base"
-
-    def layer_one(base_value: Annotated[str, Depends(base)]) -> str:
-        return f"one-{base_value}"
-
-    async def target(final: Annotated[str, Depends(layer_one)]) -> str:
-        return final
-
-    async def run() -> str:
-        async with provide_dependencies(target) as kwargs:
-            return await target(**kwargs)
-
-    assert asyncio.run(run()) == "one-base"
-
-
-def test_provide_dependencies_handles_async_function_dependency() -> None:
-    async def async_dependency() -> str:
-        return "async_value"
-
-    async def target(value: Annotated[str, Depends(async_dependency)]) -> str:
-        return value
-
-    async def run() -> str:
-        async with provide_dependencies(target) as kwargs:
-            return await target(**kwargs)
-
-    assert asyncio.run(run()) == "async_value"
-
-
 def test_provide_dependencies_handles_sync_generator_dependency() -> None:
+    """Verify sync generator dependencies follow the same enter and exit lifecycle as async ones."""
+
     events: list[str] = []
 
     def sync_dependency() -> Iterator[str]:
@@ -122,7 +78,67 @@ def test_provide_dependencies_handles_sync_generator_dependency() -> None:
     assert events == ["enter", "exit"]
 
 
+def test_get_function_dependencies_propagates_handler_exception_to_dependency() -> None:
+    """Verify handler exceptions are thrown back into async generator dependencies during teardown."""
+
+    events: list[str] = []
+
+    async def transactional_dependency() -> AsyncIterator[str]:
+        events.append("enter")
+        try:
+            yield "dependency value"
+            events.append("commit")
+        except BaseException:
+            events.append("rollback")
+            raise
+        finally:
+            events.append("finally")
+
+    async def handler(value: str = Depends(transactional_dependency)) -> None:
+        raise RuntimeError(f"handler failed after dependency setup: {value}")
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="handler failed after dependency setup"):
+            async with get_function_dependencies(callable=handler) as kwargs:
+                await handler(**kwargs)
+
+    asyncio.run(run())
+
+    assert events == ["enter", "rollback", "finally"]
+
+
+def test_sync_generator_dependency_receives_handler_exception() -> None:
+    """Verify sync generator dependencies also receive handler exceptions for rollback-style cleanup."""
+
+    events: list[str] = []
+
+    def dependency() -> Iterator[str]:
+        events.append("enter")
+        try:
+            yield "resource"
+            events.append("commit")
+        except BaseException:
+            events.append("rollback")
+            raise
+        finally:
+            events.append("finally")
+
+    async def handler(value: str = Depends(dependency)) -> None:
+        raise RuntimeError(f"boom:{value}")
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="boom:resource"):
+            async with provide_dependencies(handler) as kwargs:
+                await handler(**kwargs)
+
+    asyncio.run(run())
+
+    assert events == ["enter", "rollback", "finally"]
+
+
 def test_provide_dependencies_handles_returned_async_context_manager() -> None:
+    """Verify a dependency that returns an async context manager is entered and exited automatically."""
+
     events: list[str] = []
 
     @asynccontextmanager
@@ -150,6 +166,8 @@ def test_provide_dependencies_handles_returned_async_context_manager() -> None:
 
 
 def test_provide_dependencies_handles_returned_sync_context_manager() -> None:
+    """Verify a dependency that returns a sync context manager is entered and exited automatically."""
+
     events: list[str] = []
 
     @contextmanager
@@ -176,7 +194,189 @@ def test_provide_dependencies_handles_returned_sync_context_manager() -> None:
     assert events == ["enter", "exit"]
 
 
+def test_awaited_dependency_returning_async_context_manager_is_managed() -> None:
+    """Verify async dependencies can await to a context manager and still be managed by the resolver."""
+
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def resource() -> AsyncIterator[str]:
+        events.append("enter")
+        try:
+            yield "awaited-cm"
+        finally:
+            events.append("exit")
+
+    async def dependency() -> Any:
+        return resource()
+
+    async def handler(value: str = Depends(dependency)) -> str:
+        return value
+
+    async def run() -> str:
+        async with provide_dependencies(handler) as kwargs:
+            return await handler(**kwargs)
+
+    assert asyncio.run(run()) == "awaited-cm"
+    assert events == ["enter", "exit"]
+
+
+def test_dependency_setup_failure_propagates_into_open_dependencies() -> None:
+    """Verify dependencies opened during setup see a later setup failure during teardown."""
+
+    events: list[str] = []
+
+    async def first_dependency() -> AsyncIterator[str]:
+        events.append("enter")
+        try:
+            yield "resource"
+            events.append("commit")
+        except BaseException:
+            events.append("rollback")
+            raise
+        finally:
+            events.append("finally")
+
+    def second_dependency(_: str = Depends(first_dependency)) -> str:
+        raise RuntimeError("setup failed")
+
+    async def handler(value: str = Depends(second_dependency)) -> str:
+        return value
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="setup failed"):
+            async with provide_dependencies(handler):
+                pytest.fail(
+                    "dependency setup should fail before yielding handler kwargs"
+                )
+
+    asyncio.run(run())
+
+    assert events == ["enter", "rollback", "finally"]
+
+
+def test_sync_context_manager_dependency_can_suppress_handler_exception() -> None:
+    """Verify sync context manager dependencies can suppress handler exceptions via __exit__."""
+
+    events: list[str] = []
+
+    @contextmanager
+    def dependency() -> Iterator[str]:
+        events.append("enter")
+        try:
+            yield "resource"
+        except RuntimeError:
+            events.append("suppressed")
+        finally:
+            events.append("finally")
+
+    async def handler(value: str = Depends(dependency)) -> None:
+        raise RuntimeError(f"boom:{value}")
+
+    async def run() -> None:
+        async with provide_dependencies(handler) as kwargs:
+            await handler(**kwargs)
+
+    asyncio.run(run())
+
+    assert events == ["enter", "suppressed", "finally"]
+
+
+def test_async_context_manager_dependency_can_suppress_handler_exception() -> None:
+    """Verify async context manager dependencies can suppress handler exceptions via __aexit__."""
+
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def dependency() -> AsyncIterator[str]:
+        events.append("enter")
+        try:
+            yield "resource"
+        except RuntimeError:
+            events.append("suppressed")
+        finally:
+            events.append("finally")
+
+    async def handler(value: str = Depends(dependency)) -> None:
+        raise RuntimeError(f"boom:{value}")
+
+    async def run() -> None:
+        async with provide_dependencies(handler) as kwargs:
+            await handler(**kwargs)
+
+    asyncio.run(run())
+
+    assert events == ["enter", "suppressed", "finally"]
+
+
+def test_nested_context_managers_exit_in_lifo_order() -> None:
+    """Verify dependency teardown unwinds nested managed resources in LIFO order."""
+
+    events: list[str] = []
+
+    @contextmanager
+    def first() -> Iterator[str]:
+        events.append("first-enter")
+        try:
+            yield "first"
+        finally:
+            events.append("first-exit")
+
+    @asynccontextmanager
+    async def second(_: str = Depends(first)) -> AsyncIterator[str]:
+        events.append("second-enter")
+        try:
+            yield "second"
+        finally:
+            events.append("second-exit")
+
+    async def handler(_: str = Depends(second)) -> None:
+        events.append("handler")
+
+    async def run() -> None:
+        async with provide_dependencies(handler) as kwargs:
+            await handler(**kwargs)
+
+    asyncio.run(run())
+
+    assert events == [
+        "first-enter",
+        "second-enter",
+        "handler",
+        "second-exit",
+        "first-exit",
+    ]
+
+
+def test_close_only_return_values_are_not_auto_managed() -> None:
+    """Verify plain return values with close methods are not treated as managed context lifecycles."""
+
+    class Resource:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    resource = Resource()
+
+    def dependency() -> Resource:
+        return resource
+
+    async def handler(value: Resource = Depends(dependency)) -> Resource:
+        return value
+
+    async def run() -> Resource:
+        async with provide_dependencies(handler) as kwargs:
+            return await handler(**kwargs)
+
+    assert asyncio.run(run()) is resource
+    assert resource.closed is False
+
+
 def test_dependency_cache_is_per_call() -> None:
+    """Verify use_cache scopes dependency values to a single resolver instance."""
+
     calls = 0
 
     async def counted_dependency() -> str:
@@ -200,6 +400,8 @@ def test_dependency_cache_is_per_call() -> None:
 
 
 def test_circular_dependency_detection() -> None:
+    """Verify the resolver detects circular dependency graphs before recursing forever."""
+
     async def dep_one(value: str) -> str:
         return value
 
@@ -233,6 +435,8 @@ def test_circular_dependency_detection() -> None:
 
 @pytest.mark.asyncio
 async def test_dependency_overrides_apply() -> None:
+    """Verify dependency overrides swap implementations throughout the resolved graph."""
+
     def dep_1() -> str:
         return "original"
 
@@ -250,6 +454,8 @@ async def test_dependency_overrides_apply() -> None:
 
 
 def test_basic_resolution_does_not_require_fastapi_installed() -> None:
+    """Verify native dependency resolution works when FastAPI and Starlette imports are unavailable."""
+
     repo_root = Path(__file__).resolve().parents[1]
     script = """
 import asyncio

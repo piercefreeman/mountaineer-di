@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from functools import partial
 from typing import Annotated, Any, Callable, get_args, get_origin, get_type_hints
 
 from pydantic import TypeAdapter
@@ -16,8 +17,31 @@ from .optional_fastapi import (
 _MISSING = object()
 
 
+def _type_hint_target(func: Callable[..., Any]) -> Any:
+    target: Any = inspect.unwrap(func)
+
+    if isinstance(target, partial):
+        return _type_hint_target(target.func)
+
+    if inspect.isclass(target):
+        if target.__init__ is not object.__init__:
+            return _type_hint_target(target.__init__)
+        if target.__new__ is not object.__new__:
+            return _type_hint_target(target.__new__)
+        return target
+
+    bound_function = getattr(target, "__func__", None)
+    if bound_function is not None:
+        return _type_hint_target(bound_function)
+
+    if not inspect.isroutine(target) and hasattr(target, "__call__"):
+        return _type_hint_target(target.__call__)
+
+    return target
+
+
 def _get_parameter_hints(func: Callable[..., Any]) -> dict[str, Any]:
-    target = getattr(func, "__func__", func)
+    target = _type_hint_target(func)
     globalns = dict(getattr(target, "__globals__", {}))
     localns: dict[str, Any] = {}
 
