@@ -70,6 +70,35 @@ def test_provide_dependencies_handles_async_generator_dependency() -> None:
     assert events == ["enter", "exit"]
 
 
+def test_get_function_dependencies_propagates_handler_exception_to_dependency() -> None:
+    events: list[str] = []
+
+    async def transactional_dependency() -> AsyncIterator[str]:
+        events.append("enter")
+        try:
+            yield "dependency value"
+            events.append("commit")
+        except BaseException:
+            events.append("rollback")
+            raise
+        finally:
+            events.append("finally")
+
+    async def handler(
+        value: str = Depends(transactional_dependency),
+    ) -> None:
+        raise RuntimeError(f"handler failed after dependency setup: {value}")
+
+    async def run() -> None:
+        with pytest.raises(RuntimeError, match="handler failed after dependency setup"):
+            async with get_function_dependencies(callable=handler) as kwargs:
+                await handler(**kwargs)
+
+    asyncio.run(run())
+
+    assert events == ["enter", "rollback", "finally"]
+
+
 def test_provide_dependencies_supports_recursive_dependencies() -> None:
     def base() -> str:
         return "base"

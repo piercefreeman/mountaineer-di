@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
 from inspect import Parameter, Signature, signature
+from types import TracebackType
 from typing import Any, AsyncIterator, Callable, Optional
 
 from .annotations import (
@@ -69,6 +70,16 @@ class DependencyResolver:
         """Release any dependency contexts opened during resolution."""
 
         await self._stack.aclose()
+
+    async def exit(
+        self,
+        exc_type: type[BaseException] | None = None,
+        exc: BaseException | None = None,
+        traceback: TracebackType | None = None,
+    ) -> bool:
+        """Release dependency contexts with optional exception details."""
+
+        return bool(await self._stack.__aexit__(exc_type, exc, traceback))
 
     async def build_call_kwargs(self, func: Callable[..., Any]) -> dict[str, Any]:
         """
@@ -335,8 +346,17 @@ async def provide_dependencies(
     )
     try:
         call_kwargs = await resolver.build_call_kwargs(func)
+    except BaseException as exc:
+        await resolver.exit(type(exc), exc, exc.__traceback__)
+        raise
+
+    try:
         yield call_kwargs
-    finally:
+    except BaseException as exc:
+        suppress = await resolver.exit(type(exc), exc, exc.__traceback__)
+        if not suppress:
+            raise
+    else:
         await resolver.close()
 
 
