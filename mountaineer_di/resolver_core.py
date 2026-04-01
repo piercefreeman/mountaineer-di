@@ -108,6 +108,11 @@ class DependencyResolver:
         for name, parameter in func_signature.parameters.items():
             if parameter.kind in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD):
                 continue
+            if parameter.kind is Parameter.POSITIONAL_ONLY:
+                raise TypeError(
+                    f"Positional-only parameter '{name}' for {func_name} is not "
+                    "supported because dependency resolution passes values by keyword"
+                )
 
             if name in self._context:
                 call_kwargs[name] = self._context[name]
