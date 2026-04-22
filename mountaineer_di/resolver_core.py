@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
-from inspect import Parameter, Signature, signature
+from inspect import Parameter, signature
 from types import TracebackType
 from typing import Any, AsyncIterator, Callable, Optional
 
@@ -56,7 +56,7 @@ class DependencyResolver:
         dependency_overrides: dict[Callable[..., Any], Callable[..., Any]]
         | None = None,
     ) -> None:
-        self._context: dict[str, Any] = dict(initial_kwargs or {})
+        self._provided_kwargs: dict[str, Any] = dict(initial_kwargs or {})
         self._cache: dict[Callable[..., Any], Any] = {}
         self._active: set[Callable[..., Any]] = set()
         self._stack = AsyncExitStack()
@@ -65,7 +65,7 @@ class DependencyResolver:
         self._dependency_overrides = dependency_overrides or {}
 
         if request is not None:
-            self._context.setdefault("request", request)
+            self._provided_kwargs.setdefault("request", request)
 
     async def close(self) -> None:
         """Release any dependency contexts opened during resolution."""
@@ -102,8 +102,6 @@ class DependencyResolver:
         func_signature = signature(func)
         hints = _get_parameter_hints(func)
 
-        await self._seed_non_dependency_context(func_signature, hints)
-
         call_kwargs: dict[str, Any] = {}
         func_name = getattr(func, "__name__", func.__class__.__name__)
         for name, parameter in func_signature.parameters.items():
@@ -115,8 +113,8 @@ class DependencyResolver:
                     "supported because dependency resolution passes values by keyword"
                 )
 
-            if name in self._context:
-                call_kwargs[name] = self._context[name]
+            if name in self._provided_kwargs:
+                call_kwargs[name] = self._provided_kwargs[name]
                 continue
 
             annotation = hints.get(name, parameter.annotation)
@@ -127,27 +125,7 @@ class DependencyResolver:
                     parameter=parameter,
                     annotation=annotation,
                 )
-                self._context[name] = value
                 call_kwargs[name] = value
-                continue
-
-            raise TypeError(f"Missing required parameter '{name}' for {func_name}")
-
-        return call_kwargs
-
-    async def _seed_non_dependency_context(
-        self,
-        func_signature: Signature,
-        hints: dict[str, Any],
-    ) -> None:
-        for name, parameter in func_signature.parameters.items():
-            if parameter.kind in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD):
-                continue
-            if name in self._context:
-                continue
-
-            annotation = hints.get(name, parameter.annotation)
-            if _dependency_marker(parameter, annotation) is not None:
                 continue
 
             resolved = await self._resolve_non_dependency_parameter(
@@ -155,7 +133,12 @@ class DependencyResolver:
                 annotation=annotation,
             )
             if resolved.found:
-                self._context[name] = resolved.value
+                call_kwargs[name] = resolved.value
+                continue
+
+            raise TypeError(f"Missing required parameter '{name}' for {func_name}")
+
+        return call_kwargs
 
     async def _resolve_dependency(
         self,

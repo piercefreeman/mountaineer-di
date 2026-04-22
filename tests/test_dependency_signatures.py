@@ -147,6 +147,45 @@ async def test_recursive_dependencies_resolve_in_order() -> None:
         assert await handler(**kwargs) == "one-base"
 
 
+async def test_nested_dependency_name_collisions_do_not_reuse_dependency_values() -> None:
+    """Verify nested dependency frames resolve same-named parameters independently."""
+
+    def inner_dep() -> dict[str, int]:
+        return {"a": 1}
+
+    def outer_dep(x: dict[str, int] = Depends(inner_dep)) -> str:
+        return str(x["a"])
+
+    async def handler(
+        x: bool = Depends(lambda: True),
+        result: str = Depends(outer_dep),
+    ) -> str:
+        return result
+
+    async with provide_dependencies(handler) as kwargs:
+        assert await handler(**kwargs) == "1"
+
+
+async def test_request_bound_values_are_resolved_per_dependency_frame() -> None:
+    """Verify request-backed parameters are coerced separately for each dependency frame."""
+
+    def dependency(item_id: str) -> str:
+        return item_id
+
+    async def handler(
+        item_id: int,
+        dependency_item_id: str = Depends(dependency),
+    ) -> tuple[int, str]:
+        return (item_id, dependency_item_id)
+
+    async with get_function_dependencies(
+        callable=handler,
+        request=_build_request(path="/items/7/"),
+        url="/items/{item_id}/",
+    ) as kwargs:
+        assert await handler(**kwargs) == (7, "7")
+
+
 async def test_bound_method_dependency_is_supported() -> None:
     """Verify bound methods are treated as callable dependencies with the expected signature."""
 
