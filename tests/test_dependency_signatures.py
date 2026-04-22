@@ -147,7 +147,9 @@ async def test_recursive_dependencies_resolve_in_order() -> None:
         assert await handler(**kwargs) == "one-base"
 
 
-async def test_nested_dependency_name_collisions_do_not_reuse_dependency_values() -> None:
+async def test_nested_dependency_name_collisions_do_not_reuse_dependency_values() -> (
+    None
+):
     """Verify nested dependency frames resolve same-named parameters independently."""
 
     def inner_dep() -> dict[str, int]:
