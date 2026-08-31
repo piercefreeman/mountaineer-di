@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import (
+    Any,
+    AsyncContextManager,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    ContextManager,
+    Iterator,
+    TypeVar,
+    overload,
+)
+
+_T = TypeVar("_T")
 
 
 class _DependsMarker:
@@ -33,6 +45,36 @@ class _DependsMarker:
             f"{self.__class__.__name__}("
             f"dependency={dependency_name!r}, use_cache={self.use_cache!r})"
         )
+
+
+@overload
+def Depends(
+    dependency: Callable[
+        ...,
+        Awaitable[_T]
+        | AsyncIterator[_T]
+        | Iterator[_T]
+        | AsyncContextManager[_T]
+        | ContextManager[_T],
+    ],
+    *,
+    use_cache: bool = True,
+) -> _T: ...
+
+
+@overload
+def Depends(
+    dependency: Callable[..., _T],
+    *,
+    use_cache: bool = True,
+) -> _T: ...
+
+
+@overload
+def Depends(
+    *,
+    use_cache: bool = True,
+) -> Any: ...
 
 
 def Depends(
