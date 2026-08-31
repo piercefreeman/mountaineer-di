@@ -64,55 +64,6 @@ print(result)  # hello world
 The resolver is an async context manager because generator dependencies and
 returned context managers stay alive until the `async with` block exits.
 
-## Resolver Entry Points
-
-There are two public ways to resolve a callable:
-
-### `provide_dependencies(...)`
-
-This is the primary entry point:
-
-```python
-async with provide_dependencies(
-    handler,
-    {"prefix": "hi"},
-    request=request,
-    path="/items/{item_id}",
-    dependency_overrides={original_dep: override_dep},
-) as kwargs:
-    result = await handler(**kwargs)
-```
-
-Use it when you want the generic parameter names:
-
-- `func`: target callable
-- `kwargs`: seeded values that should already exist in the dependency graph
-- `request`: request-like object for request-aware resolution
-- `path`: route template used to infer path parameters
-- `dependency_overrides`: per-call override mapping
-
-## Native Usage
-
-Seeded kwargs are available to nested dependencies before the handler runs:
-
-```python
-from mountaineer_di import Depends, provide_dependencies
-
-
-def get_message(prefix: str) -> str:
-    return f"{prefix} world"
-
-
-async def handler(prefix: str, message: str = Depends(get_message)) -> str:
-    return message
-
-
-async with provide_dependencies(handler, {"prefix": "seeded"}) as kwargs:
-    result = await handler(**kwargs)
-
-print(result)  # seeded world
-```
-
 ## Request-Bound Resolution
 
 When FastAPI and Starlette are installed, the resolver can populate request
@@ -121,7 +72,7 @@ parameters and FastAPI field markers:
 ```python
 from fastapi import Query, Request
 
-from mountaineer_di import Depends, get_function_dependencies
+from mountaineer_di import Depends, provide_dependencies
 
 
 def get_token(request: Request) -> str:
@@ -136,10 +87,10 @@ async def handler(
     return (item_id, q, token)
 
 
-async with get_function_dependencies(
-    callable=handler,
+async with provide_dependencies(
+    handler,
     request=request,
-    url="/items/{item_id}",
+    path="/items/{item_id}",
 ) as kwargs:
     result = await handler(**kwargs)
 ```
@@ -157,7 +108,7 @@ You can mix native and FastAPI dependency markers in the same graph:
 ```python
 from fastapi import Depends as FastAPIDepends, Request
 
-from mountaineer_di import Depends, get_function_dependencies
+from mountaineer_di import Depends, provide_dependencies
 
 
 def get_user_agent(request: Request) -> str | None:
@@ -174,8 +125,8 @@ async def task(context: str = Depends(get_context)) -> str:
     return context
 
 
-async with get_function_dependencies(
-    callable=task,
+async with provide_dependencies(
+    task,
     request=request,
 ) as kwargs:
     result = await task(**kwargs)
@@ -248,8 +199,37 @@ print(result)  # billing-user
 Callable-level overrides are merged with per-call overrides. If the same
 dependency appears in both places, the explicit per-call override wins.
 
+## Global Keyword Arguments
+
+Seeded kwargs are available to the target and every nested dependency:
+
+```python
+from mountaineer_di import Depends, provide_dependencies
+
+
+def get_message(prefix: str) -> str:
+    return f"{prefix} world"
+
+
+async def handler(prefix: str, message: str = Depends(get_message)) -> str:
+    return message
+
+
+async with provide_dependencies(handler, {"prefix": "seeded"}) as kwargs:
+    result = await handler(**kwargs)
+
+print(result)  # seeded world
+```
+
 ## Development
 
-Development commands are available through the repo `Makefile`, with `lint`,
-`ci-lint`, `lint-ruff`, `lint-ty`, and `test` targets following the same
-pattern as sibling Mountaineer repositories.
+From the repository root, install the development dependencies, then use the
+command that matches your stage of work:
+
+```bash
+uv sync --group dev
+
+make lint     # While editing: format, fix lint errors, and type-check
+make test     # After changes: run the test suite
+make ci-lint  # Before pushing: validate without modifying files
+```
