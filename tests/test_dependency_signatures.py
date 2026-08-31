@@ -20,6 +20,7 @@ from typing import Annotated, Any
 import pytest
 from fastapi import Depends as FastAPIDepends, Query, Request
 from starlette.datastructures import Headers
+from typing_extensions import assert_type
 
 from mountaineer_di import (
     Depends,
@@ -93,6 +94,8 @@ async def test_sync_function_dependency_returns_plain_value() -> None:
     def dependency() -> str:
         return "dependent"
 
+    assert_type(Depends(dependency), str)
+
     async def handler(value: str = Depends(dependency)) -> str:
         return value
 
@@ -105,6 +108,8 @@ async def test_async_function_dependency_returns_plain_value() -> None:
 
     async def dependency() -> str:
         return "async-value"
+
+    assert_type(Depends(dependency), str)
 
     async def handler(value: str = Depends(dependency)) -> str:
         return value
