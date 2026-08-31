@@ -199,12 +199,6 @@ print(result)  # billing-user
 Callable-level overrides are merged with per-call overrides. If the same
 dependency appears in both places, the explicit per-call override wins.
 
-## Development
-
-Development commands are available through the repo `Makefile`, with `lint`,
-`ci-lint`, `lint-ruff`, `lint-ty`, and `test` targets following the same
-pattern as sibling Mountaineer repositories.
-
 ## Global Keyword Arguments
 
 Seeded kwargs are available to the target and every nested dependency:
@@ -225,4 +219,17 @@ async with provide_dependencies(handler, {"prefix": "seeded"}) as kwargs:
     result = await handler(**kwargs)
 
 print(result)  # seeded world
+```
+
+## Development
+
+From the repository root, install the development dependencies, then use the
+command that matches your stage of work:
+
+```bash
+uv sync --group dev
+
+make lint     # While editing: format, fix lint errors, and type-check
+make test     # After changes: run the test suite
+make ci-lint  # Before pushing: validate without modifying files
 ```
